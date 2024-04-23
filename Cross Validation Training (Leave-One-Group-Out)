@@ -1,0 +1,22 @@
+# Normalize image vectors
+X_train = X/255
+
+# Convert training and test labels to one hot matrices
+#Y = convert_to_one_hot(Y.astype(int), 10).T
+Y_train = np.expand_dims(Y.astype(int), -1)
+
+print ("number of training examples = " + str(X_train.shape[0]))
+print ("X_train shape: " + str(X_train.shape))
+print ("Y_train shape: " + str(Y_train.shape))
+number of training examples = 22424
+X_train shape: (22424, 64, 64, 3)
+Y_train shape: (22424, 1)
+       Train_loss  Train_acc  Test_loss   Test_acc
+count   26.000000  26.000000  26.000000  26.000000
+mean     4.118791  27.908272   5.293537  21.190364
+std      3.597604  19.144588   4.731039  16.150668
+min      0.722578   8.477557   0.820852   8.070501
+25%      1.849149  11.193114   2.133728  10.137083
+50%      2.545475  25.507787   2.562653  14.259937
+75%      5.299684  39.668163   8.664656  26.789961
+max     14.751674  74.439192  14.553808  71.521739
