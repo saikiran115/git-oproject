@@ -1,0 +1,123 @@
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import matplotlib.pyplot as plt
+
+from keras import layers
+from keras.layers import (Input, Add, Dense, Activation, ZeroPadding2D, BatchNormalization, 
+                          Flatten, Conv2D, AveragePooling2D, MaxPooling2D, GlobalMaxPooling2D)
+from keras.wrappers.scikit_learn import KerasClassifier
+from keras.models import Model, load_model, save_model
+from keras.preprocessing import image
+from keras.utils import layer_utils
+from keras.utils.data_utils import get_file
+from keras.applications.imagenet_utils import preprocess_input
+import pydot
+from IPython.display import SVG
+from keras.utils.vis_utils import model_to_dot
+from keras.utils import plot_model
+from resnets_utils import *
+from keras.initializers import glorot_uniform
+import scipy.misc
+from matplotlib.pyplot import imshow
+
+%matplotlib inline
+
+import keras.backend as K
+K.set_image_data_format('channels_last')
+K.set_learning_phase(1)
+
+from sklearn.model_selection import StratifiedKFold, cross_validate, LeaveOneGroupOut
+
+from PIL import Image
+def PlotClassFrequency(class_counts):
+    plt.figure(figsize=(15,4))
+    plt.bar(class_counts.index,class_counts)
+    plt.xlabel('class')
+    plt.xticks(np.arange(0, 10, 1.0))
+    plt.ylabel('count')
+    plt.title('Number of Images per Class')
+    plt.show()
+
+def DescribeImageData(data):
+    print('Average number of images: ' + str(np.mean(data)))
+    print("Lowest image count: {}. At: {}".format(data.min(), data.idxmin()))
+    print("Highest image count: {}. At: {}".format(data.max(), data.idxmax()))
+    print(data.describe())
+    
+def CreateImgArray(height, width, channel, data, folder, save_labels = True):
+    """
+    Writes image files found in 'imgs/train' to array of shape
+    [examples, height, width, channel]
+    
+    Arguments:
+    height -- integer, height in pixels
+    width --  integer, width in pixels
+    channel -- integer, number of channels (or dimensions) for image (3 for RGB)
+    data -- dataframe, containing associated image properties, such as:
+            subject -> string, alpha-numeric code of participant in image
+            classname -> string, the class name i.e. 'c0', 'c1', etc. 
+            img -> string, image name
+    folder -- string, either 'test' or 'train' folder containing the images
+    save_labels -- bool, True if labels should be saved, or False (just save 'X' images array).  
+                   Note: only applies if using train folder
+            
+    Returns:
+    .npy file -- file, contains the associated conversion of images to numerical values for processing
+    """
+    
+    num_examples = len(data)
+    X = np.zeros((num_examples,height,width,channel))
+    if (folder == 'train') & (save_labels == True):
+        Y = np.zeros(num_examples)
+    
+    for m in range(num_examples):
+        current_img = data.img[m]
+        img_path = 'imgs/' + folder + '/' + current_img
+        img = image.load_img(img_path, target_size=(height, width))
+        x = image.img_to_array(img)
+        x = preprocess_input(x)
+        X[m] = x
+        if (folder == 'train') & (save_labels == True):
+            Y[m] = data.loc[data['img'] == current_img, 'classname'].iloc[0]
+        
+    np.save('X_'+ folder + '_' + str(height) + '_' + str(width), X)
+    if (folder == 'train') & (save_labels == True):
+        np.save('Y_'+ folder + '_' + str(height) + '_' + str(width), Y)
+        
+def Rescale(X):
+    return (1/(2*np.max(X))) * X + 0.5
+
+def PrintImage(X_scaled, index, Y = None):
+    plt.imshow(X_scaled[index])
+    if Y is not None:
+        if Y.shape[1] == 1:
+            print ("y = " + str(np.squeeze(Y[index])))
+        else:
+            print("y = " + str(np.argmax(Y[index])))
+            
+def LOGO(X, Y, group, model_name, input_shape, classes, init, optimizer, metrics, epochs, batch_size):
+    logo = LeaveOneGroupOut()
+    logo.get_n_splits(X, Y, group);
+    cvscores = np.zeros((26,4))
+    subject_id = []
+    i = 0
+    for train, test in logo.split(X, Y, group):
+        # Create model
+        model = model_name(input_shape = input_shape, classes = classes, init = init)
+        # Compile the model
+        model.compile(optimizer = optimizer, loss='sparse_categorical_crossentropy', metrics=[metrics])
+        # Fit the model
+        model.fit(X[train], Y[train], epochs = epochs, batch_size = batch_size, verbose = 0)
+        # Evaluate the model
+        scores_train = model.evaluate(X[train], Y[train], verbose = 0)
+        scores_test = model.evaluate(X[test], Y[test], verbose = 0)
+        # Save to cvscores
+        cvscores[i] = [scores_train[0], scores_train[1] * 100, scores_test[0], scores_test[1] * 100]
+        subject_id.append(group.iloc[test[0]])
+        # Clear session
+        K.clear_session()
+        # Update counter
+        i += 1
+        
+    return pd.DataFrame(cvscores, index = subject_id, columns=['Train_loss', 'Train_acc','Test_loss', 'Test_acc'])
